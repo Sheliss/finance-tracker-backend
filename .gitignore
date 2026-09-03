@@ -11,3 +11,5 @@ build/
 # Prisma local database files (so we don't commit local dev data)
 prisma/*.db
 prisma/*.db-journal
+
+/src/generated/prisma
