@@ -2,6 +2,7 @@ import { Router } from "express";
 import bcrypt from "bcryptjs";
 import prisma from "../prisma.js";
 import jwt from "jsonwebtoken";
+import { verifyToken, type AuthRequest } from "../middleware/auth.js";
 
 const router = Router();
 
@@ -87,6 +88,31 @@ router.post("/login", async (req, res) => {
     });
   } catch (error) {
     console.error("Login error:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+//Get current user
+router.get("/me", verifyToken, async (req: AuthRequest, res) => {
+  try {
+    const userId = req.user?.userId;
+
+    if (!userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true },
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    return res.status(200).json({ user });
+  } catch (error) {
+    console.error("Get current user error:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
