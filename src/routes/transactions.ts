@@ -15,12 +15,33 @@ router.get("/", async (req: AuthRequest, res) => {
       return res.status(401).json({ error: "Unauthorized" });
     }
 
-    const transactions = await prisma.transaction.findMany({
-      where: { userId },
-      orderBy: { date: "desc" }, // Latest first
-    });
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const skip = (page - 1) * limit;
 
-    return res.status(200).json(transactions);
+    const [transactions, totalCount] = await Promise.all([
+      prisma.transaction.findMany({
+        where: { userId },
+        orderBy: { date: "desc" },
+        skip: skip, // Skip records of previous pages
+        take: limit, // Take only the amount for this page (e.g., 10)
+      }),
+      prisma.transaction.count({
+        where: { userId },
+      }),
+    ]);
+
+    const totalPages = Math.ceil(totalCount / limit);
+
+    return res.status(200).json({
+      data: transactions,
+      pagination: {
+        total: totalCount,
+        page,
+        limit,
+        totalPages,
+      },
+    });
   } catch (error) {
     console.error("Fetch transactions error:", error);
     return res.status(500).json({ error: "Internal server error" });
