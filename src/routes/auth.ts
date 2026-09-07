@@ -1,10 +1,13 @@
 import { Router } from "express";
+import { Resend } from "resend";
 import bcrypt from "bcryptjs";
 import prisma from "../prisma.js";
 import jwt from "jsonwebtoken";
 import { verifyToken, type AuthRequest } from "../middleware/auth.js";
+import crypto from "crypto";
 
 const router = Router();
+const resend = new Resend(process.env.RESEND_API);
 
 //User register
 router.post("/register", async (req, res) => {
@@ -31,15 +34,29 @@ router.post("/register", async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
+    //Verification token
+    const verificationToken = crypto.randomBytes(32).toString("hex");
+
     //Save user to db
     const newUser = await prisma.user.create({
       data: {
         email,
         password: hashedPassword,
+        isVerified: false,
+        verificationToken,
       },
     });
 
-    return res.sendStatus(201).json({
+    //Verification email via Resend API
+    const verificationLink = `http://localhost:5000/api/auth/verify?token=${verificationToken}`;
+    await resend.emails.send({
+      from: "verification@harukanyan.space",
+      to: email,
+      subject: "Verify your email",
+      html: `<p>Click <a href="${verificationLink}">here</a> to verify your account.</p>`,
+    });
+
+    return res.status(201).json({
       message: {
         id: newUser.id,
         email: newUser.email,
@@ -47,6 +64,48 @@ router.post("/register", async (req, res) => {
     });
   } catch (error) {
     console.error("Registration error:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.get("/verify", async (req, res) => {
+  try {
+    const { token } = req.query;
+
+    if (!token || typeof token !== "string") {
+      return res.status(400).json({ error: "Invalid verification token" });
+    }
+
+    // Find user with this token
+    const user = await prisma.user.findFirst({
+      where: { verificationToken: token },
+    });
+
+    if (!user) {
+      return res
+        .status(400)
+        .json({ error: "Invalid or expired verification link" });
+    }
+
+    // Update user to verified and clear the token
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        isVerified: true,
+        verificationToken: null, // Clear token so it's single-use
+      },
+    });
+
+    // Send a success message or redirect them to your frontend login page
+    return res.status(200).send(`
+      <html>
+        <body style="font-family: Arial; text-align: center; margin-top: 50px;">
+          <h1>Email Verified Successfully! 🎉</h1>
+          <p>You can now close this tab and log in to your finance tracker.</p>
+        </body>
+      </html>
+    `);
+  } catch (error) {
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -69,7 +128,11 @@ router.post("/login", async (req, res) => {
       return res.status(401).json({ error: "Invalid email or password" });
     }
 
-    const isPasswordValid = await bcrypt.compare(password, user.password);
+    if (!user.isVerified) {
+      return res
+        .status(403)
+        .json({ error: "Please verify your email address before logging in." });
+    }
 
     //Generate JWT token
     const jwtSecret = process.env.JWT_SECRET || "fallback_secret";
