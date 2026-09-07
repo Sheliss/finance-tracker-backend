@@ -50,7 +50,7 @@ router.post("/register", async (req, res) => {
     //Verification email via Resend API
     const verificationLink = `http://localhost:5000/api/auth/verify?token=${verificationToken}`;
     await resend.emails.send({
-      from: "verification@harukanyan.space",
+      from: "finance-tracker@harukanyan.space",
       to: email,
       subject: "Verify your email",
       html: `<p>Click <a href="${verificationLink}">here</a> to verify your account.</p>`,
