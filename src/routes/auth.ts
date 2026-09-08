@@ -6,6 +6,8 @@ import jwt from "jsonwebtoken";
 import { verifyToken, type AuthRequest } from "../middleware/auth.js";
 import crypto from "crypto";
 
+import { emailText } from "../utils/emailTemplates.js";
+
 const router = Router();
 const resend = new Resend(process.env.RESEND_API);
 
@@ -48,12 +50,12 @@ router.post("/register", async (req, res) => {
     });
 
     //Verification email via Resend API
-    const verificationLink = `http://localhost:5000/api/auth/verify?token=${verificationToken}`;
+    const verificationLink = `https://finance-api.harukanyan.space/api/auth/verify?token=${verificationToken}`;
     await resend.emails.send({
       from: "finance-tracker@harukanyan.space",
       to: email,
-      subject: "Verify your email",
-      html: `<p>Click <a href="${verificationLink}">here</a> to verify your account.</p>`,
+      subject: "Verify your email for finance tracker",
+      html: emailText(verificationLink),
     });
 
     return res.status(201).json({
