@@ -10,6 +10,7 @@ import { emailText } from "../utils/emailTemplates.js";
 
 const router = Router();
 const resend = new Resend(process.env.RESEND_API);
+const frontendUrl = process.env.FRONTEND_URL;
 
 //User register
 router.post("/register", async (req, res) => {
@@ -50,7 +51,7 @@ router.post("/register", async (req, res) => {
     });
 
     //Verification email via Resend API
-    const verificationLink = `https://finance-api.harukanyan.space/api/auth/verify?token=${verificationToken}`;
+    const verificationLink = `${frontendUrl}/verify-email?token=${verificationToken}`;
     await resend.emails.send({
       from: "finance-tracker@harukanyan.space",
       to: email,
@@ -89,24 +90,33 @@ router.get("/verify", async (req, res) => {
         .json({ error: "Invalid or expired verification link" });
     }
 
-    // Update user to verified and clear the token
     await prisma.user.update({
       where: { id: user.id },
       data: {
         isVerified: true,
-        verificationToken: null, // Clear token so it's single-use
+        verificationToken: null,
       },
     });
 
-    // Send a success message or redirect them to your frontend login page
-    return res.status(200).send(`
-      <html>
-        <body style="font-family: Arial; text-align: center; margin-top: 50px;">
-          <h1>Email Verified Successfully! 🎉</h1>
-          <p>You can now close this tab and log in to your finance tracker.</p>
-        </body>
-      </html>
-    `);
+    const jwtSecret = process.env.JWT_SECRET;
+    if (!jwtSecret) {
+      return res.status(500).json({ error: "Internal server error" });
+    }
+
+    const authToken = jwt.sign(
+      { userId: user.id, email: user.email },
+      jwtSecret,
+      { expiresIn: "7d" },
+    );
+
+    return res.status(200).json({
+      message: "Email verified successfully!",
+      token: authToken,
+      user: {
+        id: user.id,
+        email: user.email,
+      },
+    });
   } catch (error) {
     return res.status(500).json({ error: "Internal server error" });
   }
